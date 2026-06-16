@@ -1,0 +1,90 @@
+spring:
+  application:
+    name: payment_backend
+
+  main:
+    banner-mode: off
+
+  ai:
+    mcp:
+      server:
+        name: payment-ops-mcp-server
+        version: 1.0.0
+        type: SYNC
+        instructions: >-
+          Read-only payment operations: look up payment status, find stuck payments,
+            and run full failure triage (diagnosis, network rules, and a proposed
+            remediation plan). Proposes actions but cannot execute refunds or captures.
+        capabilities:
+          tool: true
+      client:
+        stdio:
+          connections:
+            github:
+              command: npx
+              args: [ "-y", "@modelcontextprotocol/server-github" ]
+              env:
+                GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: qwen3:30b
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.2
+      embedding:
+        options:
+          model: text-embedding-3-small
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
+      chat:
+        options:
+          model: claude-sonnet-4-6
+          temperature: 0.9
+
+    vectorstore:
+      pgvector:
+        initialize-schema: true
+
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: always
+            table-name: chat_memory
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pgvector_payment
+    username: pallavisharma
+    password:
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data.sql
+
+app:
+  incident:
+    owner: pallavi-sharma18
+    repo: github-mcp-payment-backend
+
+logging:
+  file:
+    name: ./payment_backend.log
+  level:
+    org.springframework.ai.chat.client: DEBUG
