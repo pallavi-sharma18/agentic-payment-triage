@@ -26,37 +26,9 @@ rules explanation grounded in network documentation, and a propose-only remediat
 A follow-up `POST /triage/{paymentId}/execute` runs the human-approved steps and records the
 incident in GitHub via MCP.
 
-<img width="1916" height="1320" alt="image" src="https://github.com/user-attachments/assets/54d096a7-06bb-423d-ae3b-ed1ada5dafaa" />
-
-
 ## Architecture
 
-```
-POST /triage?paymentId=pay_1002
-        │
-        ▼
-  TriageService  (deterministic orchestrator — plain Java, no LLM)
-        │  ├─ 404 guard if payment not found
-        │  └─ short-circuits healthy payments
-        │
-        ├─1─▶ DiagnosticsAgent ──▶ LLM classifies the failure         ─▶ Diagnosis
-        │        │
-        │        └─ AGENTIC LOOP: if low-confidence/ambiguous, gather recent-failure
-        │           evidence and re-diagnose (bounded, confidence-driven) until confident
-        │
-        ├─2─▶ RulesAgent (RAG) ──▶ LLM + pgvector over visa.pdf        ─▶ RuleExplanation
-        │
-        └─3─▶ RemediationAgent ─▶ LLM judgment (propose-only)          ─▶ ActionPlan
-        │
-        ▼
-  TriageResult { diagnosis, ruleExplanation, actionPlan }
-
-POST /triage/{paymentId}/execute?approveSteps=1,2
-        │
-        ▼
-  RemediationExecutor ──▶ GitHub MCP client (create_issue) ──▶ incident issue opened
-        (runs only steps that need no approval OR are explicitly approved)
-```
+<img width="1916" height="1320" alt="image" src="https://github.com/user-attachments/assets/54d096a7-06bb-423d-ae3b-ed1ada5dafaa" />
 
 ### Agents — how the LLM and RAG are used
 
