@@ -26,6 +26,9 @@ rules explanation grounded in network documentation, and a propose-only remediat
 A follow-up `POST /triage/{paymentId}/execute` runs the human-approved steps and records the
 incident in GitHub via MCP.
 
+<img width="1916" height="1320" alt="image" src="https://github.com/user-attachments/assets/54d096a7-06bb-423d-ae3b-ed1ada5dafaa" />
+
+
 ## Architecture
 
 ```
