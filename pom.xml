@@ -97,6 +97,41 @@
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-starter-mcp-client</artifactId>
 		</dependency>
+
+		<!-- openai-java okhttp client: lets us build an OpenAIClient with maxRetries(0)
+		     so Resilience4j is the sole retry layer (see AIConfig#openAiChatModel).
+		     Exclude its victools jsonschema (v4.x) — it conflicts with Spring AI's v5.0.0 and
+		     breaks MCP tool-schema generation. We don't use openai-java's structured-output
+		     feature (Spring AI does its own schema via .entity()), so it's not needed. -->
+		<dependency>
+			<groupId>com.openai</groupId>
+			<artifactId>openai-java-client-okhttp</artifactId>
+			<version>4.38.0</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.github.victools</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<!-- Resilience: retries/backoff, circuit breakers, time limiters around LLM/MCP calls -->
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-spring-boot3</artifactId>
+			<version>2.3.0</version>
+		</dependency>
+		<!-- Required: Resilience4j annotations are applied via Spring AOP proxies
+		     (Boot 4 renamed spring-boot-starter-aop -> spring-boot-starter-aspectj) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aspectj</artifactId>
+		</dependency>
+		<!-- Expose circuit-breaker state and retry metrics -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>

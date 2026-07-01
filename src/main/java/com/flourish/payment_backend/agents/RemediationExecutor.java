@@ -1,6 +1,7 @@
 package com.flourish.payment_backend.agents;
 
 import com.flourish.payment_backend.dtos.ActionPlanDto;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.modelcontextprotocol.client.McpSyncClient;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
@@ -42,6 +43,7 @@ public class RemediationExecutor {
         this.chatClient = builder.defaultSystem(system).build();
     }
 
+    @CircuitBreaker(name = "mcpGithub", fallbackMethod = "executeFallback")
     public String execute(String paymentId, ActionPlanDto plan, Set<Integer> approvedSteps) {
         if (plan == null || plan.actions() == null) {
             return "No action plan to execute.";
@@ -64,5 +66,13 @@ public class RemediationExecutor {
                 .tools(mcpToolCallbackProvider)
                 .call()
                 .content();
+    }
+
+    /** Surface the failure loudly — the operator must know the incident was NOT auto-filed. */
+    private String executeFallback(String paymentId, ActionPlanDto plan,
+                                   Set<Integer> approvedSteps, Throwable t) {
+        return "Incident NOT auto-filed for payment " + paymentId
+                + " — GitHub/MCP unavailable (" + t.getClass().getSimpleName()
+                + "). Please open the incident manually.";
     }
 }

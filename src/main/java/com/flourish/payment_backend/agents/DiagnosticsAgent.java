@@ -2,6 +2,8 @@ package com.flourish.payment_backend.agents;
 
 import com.flourish.payment_backend.dtos.DiagnosisDto;
 import com.flourish.payment_backend.dtos.PaymentDto;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
@@ -45,10 +47,16 @@ public class DiagnosticsAgent {
         """;
 
     /** Convenience: first pass with no extra evidence. */
+    // fallbackMethod is on @Retry (the OUTER aspect) so retries run first; the fallback fires
+    // only after retries are exhausted, or when the breaker is open.
+    @Retry(name = "llm", fallbackMethod = "diagnoseFallback")
+    @CircuitBreaker(name = "llm")
     public DiagnosisDto diagnose(PaymentDto payment) {
         return diagnose(payment, List.of());
     }
 
+    @Retry(name = "llm", fallbackMethod = "diagnoseFallback")
+    @CircuitBreaker(name = "llm")
     public DiagnosisDto diagnose(PaymentDto payment, List<PaymentDto> recentFailures) {
         long minutesSincePayment = payment.getPaymentTime() == null ? 0
                 : Duration.between(payment.getPaymentTime(), LocalDateTime.now()).toMinutes();
@@ -82,5 +90,28 @@ public class DiagnosticsAgent {
                 .user(userPrompt)
                 .call()
                 .entity(DiagnosisDto.class);
+    }
+
+    private DiagnosisDto diagnoseFallback(PaymentDto payment, Throwable t) {
+        return degraded(payment, t);
+    }
+
+    private DiagnosisDto diagnoseFallback(PaymentDto payment, List<PaymentDto> recentFailures, Throwable t) {
+        return degraded(payment, t);
+    }
+
+    /** Graceful degradation: a valid DiagnosisDto the pipeline can keep running on. */
+    private DiagnosisDto degraded(PaymentDto payment, Throwable t) {
+        return new DiagnosisDto(
+                payment.getPaymentId(),
+                payment.getPaymentStatus(),
+                payment.getAmount(),
+                payment.getFailureReason(),
+                "UNKNOWN",          // failureCategory
+                false,              // stuck
+                "Diagnostics unavailable: " + t.getClass().getSimpleName(),
+                0.0,                // confidence
+                true                // needsMoreContext
+        );
     }
 }

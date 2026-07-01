@@ -2,6 +2,8 @@ package com.flourish.payment_backend.agents;
 
 import com.flourish.payment_backend.dtos.DiagnosisDto;
 import com.flourish.payment_backend.dtos.RuleExplanationDto;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
@@ -9,6 +11,8 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -32,6 +36,8 @@ public class RulesAgent {
         Put the snippets you actually relied on into "sources".
         """;
 
+    @Retry(name = "llm", fallbackMethod = "explainFallback")
+    @CircuitBreaker(name = "llm")
     @Cacheable(
             value = "ruleExplanations",
             key = "#diagnosis.failureCategory() + ':' + #diagnosis.failureReason()"
@@ -57,6 +63,19 @@ public class RulesAgent {
                 .advisors(ragAdvisor)
                 .call()
                 .entity(RuleExplanationDto.class);
+    }
+
+    /** Conservative defaults — mirrors the "context not covered" guidance in the system prompt. */
+    private RuleExplanationDto explainFallback(DiagnosisDto diagnosis, Throwable t) {
+        return new RuleExplanationDto(
+                diagnosis.failureReason(),
+                "Rules service unavailable (" + t.getClass().getSimpleName()
+                        + "). Applying conservative defaults; manual review required.",
+                false,        // retryAllowed
+                null,         // maxRetries
+                false,        // reversalAllowed
+                List.of()     // sources
+        );
     }
 
 }
