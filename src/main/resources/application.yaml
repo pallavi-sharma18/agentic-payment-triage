@@ -18,6 +18,7 @@ spring:
         capabilities:
           tool: true
       client:
+        request-timeout: 20s  # bounds each MCP tool call (the npx stdio server)
         stdio:
           connections:
             github:
@@ -65,7 +66,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: create-drop
     show-sql: true
     properties:
       hibernate:
@@ -83,8 +84,58 @@ app:
     owner: pallavi-sharma18
     repo: github-mcp-payment-backend
 
+resilience4j:
+  retry:
+    instances:
+      llm:
+        max-attempts: 3
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2          # 1s, 2s, 4s
+        enable-randomized-wait: true               # jitter — avoids the thundering herd
+        randomized-wait-factor: 0.5
+        retry-exceptions:                          # ONLY transient faults (what openai-java throws)
+          - com.openai.errors.OpenAIIoException       # network error / timeout
+          - com.openai.errors.RateLimitException      # 429
+          - com.openai.errors.InternalServerException # 5xx
+        ignore-exceptions:                         # NEVER retry these
+          - com.openai.errors.BadRequestException        # 400
+          - com.openai.errors.UnauthorizedException      # 401
+          - com.openai.errors.PermissionDeniedException  # 403
+          - com.openai.errors.NotFoundException          # 404
+          - com.openai.errors.UnprocessableEntityException # 422
+  circuitbreaker:
+    instances:
+      llm:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50                 # open at 50% failures
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+      mcpGithub:                                   # separate breaker for the MCP server
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics, circuitbreakers, retries, retryevents, circuitbreakerevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
 logging:
   file:
     name: ./payment_backend.log
   level:
     org.springframework.ai.chat.client: DEBUG
+    io.github.resilience4j: DEBUG

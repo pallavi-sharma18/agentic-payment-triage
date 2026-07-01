@@ -3,9 +3,13 @@ package com.flourish.payment_backend.agents;
 import com.flourish.payment_backend.dtos.ActionPlanDto;
 import com.flourish.payment_backend.dtos.DiagnosisDto;
 import com.flourish.payment_backend.dtos.RuleExplanationDto;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -26,6 +30,8 @@ public class RemediationAgent {
         Number the steps starting at 1 and give a short rationale for each.
         """;
 
+    @Retry(name = "llm", fallbackMethod = "planFallback")
+    @CircuitBreaker(name = "llm")
     public ActionPlanDto plan(DiagnosisDto diagnosis, RuleExplanationDto rules) {
         String context = """
                 DIAGNOSIS
@@ -53,6 +59,16 @@ public class RemediationAgent {
                 .user(context)
                 .call()
                 .entity(ActionPlanDto.class);
+    }
+
+    /** Degrade to a single human-review step so the failure stays visible and safe. */
+    private ActionPlanDto planFallback(DiagnosisDto diagnosis, RuleExplanationDto rules, Throwable t) {
+        ActionPlanDto.RecommendedAction manual = new ActionPlanDto.RecommendedAction(
+                1,
+                "Remediation planner unavailable — route this payment to manual review.",
+                true,                               // requiresHumanApproval
+                "Automated planning failed: " + t.getClass().getSimpleName());
+        return new ActionPlanDto(List.of(manual), "Manual review required (planner unavailable).");
     }
 
 }
